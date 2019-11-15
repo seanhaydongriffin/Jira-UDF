@@ -167,12 +167,13 @@ EndFunc
 
 ; Search
 
-Func _JiraSearchIssues($fields, $jql, $changelog = False)
+Func _JiraSearchIssues($fields, $jql, $changelog = False, $max_pages = 9999)
 
 	Local $startAt = 0
 	Local $response = ""
 	$jira_json = ""
 	Local $changelog_json = ""
+	Local $page_num = 1
 
 	if $changelog = True Then
 
@@ -221,7 +222,13 @@ Func _JiraSearchIssues($fields, $jql, $changelog = False)
 
 ;		$jira_json = $jira_json & $response[2]
 		$jira_json = $jira_json & $response
+		$page_num = $page_num + 1
 		$startAt = $startAt + 100
+
+		if $page_num > $max_pages Then
+
+			ExitLoop
+		EndIf
 
 	Until False
 
@@ -236,6 +243,16 @@ Func _JiraGetSearchResultKeysAndIssueTypeNames($fields, $jql)
 	$rr = StringRegExp($jira_json, '(?U)"key":"(.*)".*"name":"(.*)"', 3)
 
 	Return $rr
+
+EndFunc
+
+Func _JiraGetSearchResultTotal($jql)
+
+	_JiraSearchIssues("total", $jql, False, 1)
+
+	Local $decoded_json = Json_Decode($jira_json)
+	Local $total = Json_Get($decoded_json, '.total')
+	Return $total
 
 EndFunc
 
@@ -729,6 +746,127 @@ Func _JiraGetSearchResultKeysSummariesIssueTypeNamesIssueLinks($fields, $jql)
 	Return $rr
 
 EndFunc
+
+
+
+Func _JiraGetSearchResultKeys($fields, $jql)
+
+	_JiraSearchIssues($fields, $jql)
+
+;	FileDelete("D:\dwn\fred.txt")
+;	FileWrite("D:\dwn\fred.txt", $jira_json)
+;	Exit
+
+	; "key":"SEAB-4681","fields":{"summary":"1.13 - Regression Requirements - upload organisation units to the tenant","issuetype":
+
+
+
+	local $rr[0]
+	Local $decoded_json = Json_Decode($jira_json)
+
+	for $i = 0 to 99999
+
+		Local $key = Json_Get($decoded_json, '.issues[' & $i & '].key')
+
+		if @error > 0 Then ExitLoop
+
+		_ArrayAdd($rr, $key, 0, "|", @CRLF, 1)
+	Next
+
+	Return $rr
+
+EndFunc
+
+
+Func _JiraGetProjectKeys()
+
+	_JiraGetProjects()
+
+	local $rr[0]
+	Local $decoded_json = Json_Decode($jira_json)
+
+	for $i = 0 to 99999
+
+		Local $key = Json_Get($decoded_json, '.values[' & $i & '].key')
+
+		if @error > 0 Then ExitLoop
+
+		_ArrayAdd($rr, $key, 0, "|", @CRLF, 1)
+	Next
+
+	Return $rr
+
+EndFunc
+
+
+Func _JiraGetProjects()
+
+	Local $response = ""
+	$jira_json = ""
+
+	$ww = 'curl.exe -k -H "Accept: application/json" -H "Content-Type: application/json" -u ' & $jira_username & ':' & $jira_password & ' ' & $jira_domain & "/rest/api/3/project/search"
+	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $ww = ' & $ww & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+
+	Local $iPID = Run('curl.exe -k -H "Accept: application/json" -H "Content-Type: application/json" -u ' & $jira_username & ':' & $jira_password & ' ' & $jira_domain & "/rest/api/3/project/search", @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+	ProcessWaitClose($iPID)
+	$response = StdoutRead($iPID)
+
+	$jira_json = $response
+EndFunc
+
+
+
+Func _JiraGetProjectBugStatuses($project_key)
+
+	_JiraGetProjectStatuses($project_key)
+	local $rr[0]
+	$jira_json = "{""workflows"":" & $jira_json & "}"
+	Local $decoded_json = Json_Decode($jira_json)
+
+	for $i = 0 to 99999
+
+		Local $workflow_name = Json_Get($decoded_json, '.workflows[' & $i & '].name')
+
+		if @error > 0 Then ExitLoop
+
+		if StringCompare($workflow_name, "Bug") = 0 Then
+
+			for $j = 0 to 99999
+
+				Local $status_name = Json_Get($decoded_json, '.workflows[' & $i & '].statuses[' & $j & '].name')
+
+				if @error > 0 Then ExitLoop
+
+				_ArrayAdd($rr, $status_name, 0, "|", @CRLF, 1)
+			Next
+
+			ExitLoop
+		EndIf
+	Next
+
+	Return $rr
+
+EndFunc
+
+
+
+Func _JiraGetProjectStatuses($project_key)
+
+	Local $response = ""
+	$jira_json = ""
+
+	$ww = 'curl.exe -k -H "Accept: application/json" -H "Content-Type: application/json" -u ' & $jira_username & ':' & $jira_password & ' ' & $jira_domain & "/rest/api/2/project/" & $project_key & "/statuses"
+	ConsoleWrite('@@ Debug(' & @ScriptLineNumber & ') : $ww = ' & $ww & @CRLF & '>Error code: ' & @error & @CRLF) ;### Debug Console
+
+	Local $iPID = Run('curl.exe -k -H "Accept: application/json" -H "Content-Type: application/json" -u ' & $jira_username & ':' & $jira_password & ' ' & $jira_domain & "/rest/api/2/project/" & $project_key & "/statuses", @ScriptDir, @SW_HIDE, $STDOUT_CHILD)
+	ProcessWaitClose($iPID)
+	$response = StdoutRead($iPID)
+
+	$jira_json = $response
+EndFunc
+
+
+
 
 Func _JiraBrowseIssue($key)
 
